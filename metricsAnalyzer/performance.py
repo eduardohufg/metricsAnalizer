@@ -3,16 +3,16 @@ from rclpy.node import Node
 from std_msgs.msg import Float32
 import time
 import numpy as np
-
+import matplotlib.pyplot as plt
 
 class PerformanceMetricsAnalyzer(Node):
     def __init__(self):
         super().__init__('performance_metrics_analyzer')
         self.subscription = self.create_subscription(Float32, 'motor_output', self.listener_callback, 10)
-        self.publisher = self.create_publisher(Float32, 'motor_input_1', 10)
+        self.publisher = self.create_publisher(Float32, 'set_point', 10)
         self.timer = self.create_timer(0.2, self.publish_step_signal) 
         self.start_time = time.time()
-        self.step_value = 1.0
+        self.step_value = 2*np.pi
         self.time_data = []
         self.output_data = []
         self.msg = Float32()
@@ -36,7 +36,7 @@ class PerformanceMetricsAnalyzer(Node):
     def finish(self):
         self.msg.data = 0.0
         self.publisher.publish(self.msg)
-        self.get_logger().info('Motor stoped: 0.0')
+        self.get_logger().info('Motor stopped: 0.0')
 
     def listener_callback(self, msg):
         if not self.experiment_completed:
@@ -59,10 +59,9 @@ class PerformanceMetricsAnalyzer(Node):
 
         e_ss = abs(self.step_value - y_final)
         
-    
         ts = t[-1]
         for i in reversed(range(len(t))):
-            if abs(y[i] - y_final) > 0.03 * y_final:
+            if abs(y[i] - y_final) > 0.02 * y_final:
                 ts = t[i]
                 break
         
@@ -71,13 +70,11 @@ class PerformanceMetricsAnalyzer(Node):
         Mp = ((y_max - y_final) / y_final) * 100 if y_max > y_final else 0
 
         tr = self.time_data[-1]
-
-        for i in range (len(self.time_data)):
+        for i in range(len(self.time_data)):
             if self.output_data[i] >= y_final:
                 tr = self.time_data[i]
                 break
 
-    
         ise = np.trapz((self.step_value - y)**2, t)
         iae = np.trapz(abs(self.step_value - y), t)
         itse = np.trapz(t * (self.step_value - y)**2, t)
@@ -95,10 +92,21 @@ class PerformanceMetricsAnalyzer(Node):
             f.write(f'IAE: {iae:.4f}\n')
             f.write(f'ITSE: {itse:.4f}\n')
             f.write(f'ITAE: {itae:.4f}\n')
-
-
+        
         self.get_logger().info("Metrics saved in performance_metrics.txt")
-
+        
+        self.plot_response(t, y)
+    
+    def plot_response(self, t, y):
+        plt.figure(figsize=(10, 5))
+        plt.plot(t, y, label='Motor Output', linestyle='-', marker='o', markersize=3)
+        plt.axhline(self.step_value, color='r', linestyle='--', label='Step Input')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Output Response')
+        plt.title('Motor Response over Time')
+        plt.legend()
+        plt.grid()
+        plt.show()
 
 def main(args=None):
     rclpy.init(args=args)
@@ -111,7 +119,6 @@ def main(args=None):
     finally:
         performance_analyzer.destroy_node()
         rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()
